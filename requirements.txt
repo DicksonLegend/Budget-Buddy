@@ -3,5 +3,4 @@ pandas==2.0.3
 plotly==5.15.0
 psycopg2-binary==2.9.7
 sqlalchemy==2.0.19
-numpy==1.24.3
-uuid
+numpy==1.25.0
