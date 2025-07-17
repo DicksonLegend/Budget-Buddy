@@ -238,8 +238,9 @@ st.markdown("""
 
 @st.cache_resource
 @st.cache_resource
+@st.cache_resource
 def get_database_connection():
-    """Create database connection"""
+    """Create database connection with timeout and better error handling"""
     try:
         # Try to get DATABASE_URL from Streamlit secrets first
         if hasattr(st, 'secrets') and "DATABASE_URL" in st.secrets:
@@ -253,24 +254,30 @@ def get_database_connection():
             st.error("1. Go to your app settings in Streamlit Cloud")
             st.error("2. Add DATABASE_URL to the secrets section")
             st.error("3. Format: DATABASE_URL = \"postgresql://username:password@host:port/database\"")
-            st.error("")
-            st.error("For local development, add to .streamlit/secrets.toml:")
-            st.code("""
-# .streamlit/secrets.toml
-DATABASE_URL = "postgresql://username:password@host:port/database"
-            """)
             return None
         
-        engine = create_engine(database_url)
+        # Add connection timeout and pool settings
+        engine = create_engine(
+            database_url,
+            connect_args={
+                "connect_timeout": 10,
+                "application_name": "budget_buddy_app"
+            },
+            pool_timeout=20,
+            pool_recycle=300,
+            pool_pre_ping=True
+        )
         
-        # Test the connection
+        # Test the connection with timeout
         with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
+            result = conn.execute(text("SELECT 1"))
+            result.fetchone()
         
         return engine
     except Exception as e:
         st.error(f"Database connection error: {str(e)}")
         st.error("Please check your DATABASE_URL configuration")
+        st.error("Make sure your Railway PostgreSQL database is running")
         return None
 
 def initialize_database():
