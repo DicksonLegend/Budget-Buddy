@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import uuid
+from uuid import uuid4
 import psycopg2
 from sqlalchemy import create_engine, text
 import numpy as np
@@ -301,7 +301,7 @@ def initialize_database():
 def initialize_session_state():
     """Initialize session state variables"""
     if 'user_id' not in st.session_state:
-        st.session_state.user_id = str(uuid.uuid4())
+        st.session_state.user_id = str(uuid4())
     
     if 'db_initialized' not in st.session_state:
         st.session_state.db_initialized = initialize_database()
