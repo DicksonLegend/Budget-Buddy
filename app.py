@@ -7,6 +7,7 @@ from uuid import uuid4
 import psycopg2
 from sqlalchemy import create_engine, text
 import numpy as np
+import os 
 
 # Page config
 st.set_page_config(
@@ -236,30 +237,40 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 @st.cache_resource
+@st.cache_resource
 def get_database_connection():
     """Create database connection"""
     try:
-        if "DATABASE_URL" not in st.secrets:
-            st.error("DATABASE_URL not found in secrets.toml")
-            st.error("Please add DATABASE_URL to your .streamlit/secrets.toml file")
+        # Try to get DATABASE_URL from Streamlit secrets first
+        if hasattr(st, 'secrets') and "DATABASE_URL" in st.secrets:
+            database_url = st.secrets["DATABASE_URL"]
+        # Fallback to environment variable
+        elif "DATABASE_URL" in os.environ:
+            database_url = os.environ["DATABASE_URL"]
+        else:
+            st.error("DATABASE_URL not found in secrets or environment variables")
+            st.error("For Streamlit Cloud deployment:")
+            st.error("1. Go to your app settings in Streamlit Cloud")
+            st.error("2. Add DATABASE_URL to the secrets section")
+            st.error("3. Format: DATABASE_URL = \"postgresql://username:password@host:port/database\"")
+            st.error("")
+            st.error("For local development, add to .streamlit/secrets.toml:")
             st.code("""
 # .streamlit/secrets.toml
 DATABASE_URL = "postgresql://username:password@host:port/database"
             """)
             return None
         
-        database_url = st.secrets["DATABASE_URL"]
         engine = create_engine(database_url)
         
+        # Test the connection
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         
         return engine
-    except KeyError as e:
-        st.error(f"Missing secret: {str(e)}")
-        return None
     except Exception as e:
         st.error(f"Database connection error: {str(e)}")
+        st.error("Please check your DATABASE_URL configuration")
         return None
 
 def initialize_database():
