@@ -237,57 +237,101 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 @st.cache_resource
-@st.cache_resource
-@st.cache_resource
 def get_database_connection():
-    """Create database connection with timeout and better error handling"""
+    """Create database connection with timeout and better error handling for Railway deployment"""
     try:
-        # Try to get DATABASE_URL from Streamlit secrets first
-        if hasattr(st, 'secrets') and "DATABASE_URL" in st.secrets:
-            database_url = st.secrets["DATABASE_URL"]
-        # Fallback to environment variable
-        elif "DATABASE_URL" in os.environ:
+        # Try different methods to get DATABASE_URL
+        database_url = None
+        
+        # Method 1: Try Railway environment variable (most common)
+        if "DATABASE_URL" in os.environ:
             database_url = os.environ["DATABASE_URL"]
-        else:
-            st.error("DATABASE_URL not found in secrets or environment variables")
-            st.error("For Streamlit Cloud deployment:")
-            st.error("1. Go to your app settings in Streamlit Cloud")
-            st.error("2. Add DATABASE_URL to the secrets section")
-            st.error("3. Format: DATABASE_URL = \"postgresql://username:password@host:port/database\"")
+            print("✅ Found DATABASE_URL in environment variables")
+        
+        # Method 2: Try Streamlit secrets (for Streamlit Cloud)
+        elif hasattr(st, 'secrets') and "DATABASE_URL" in st.secrets:
+            database_url = st.secrets["DATABASE_URL"]
+            print("✅ Found DATABASE_URL in Streamlit secrets")
+        
+        # Method 3: Try individual components (Railway style)
+        elif all(key in os.environ for key in ["PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD"]):
+            database_url = f"postgresql://{os.environ['PGUSER']}:{os.environ['PGPASSWORD']}@{os.environ['PGHOST']}:{os.environ['PGPORT']}/{os.environ['PGDATABASE']}"
+            print("✅ Built DATABASE_URL from individual components")
+        
+        if not database_url:
+            st.error("❌ DATABASE_URL not found!")
+            st.error("For Railway deployment, make sure your PostgreSQL service is linked to your app.")
+            st.error("Railway should automatically set the DATABASE_URL environment variable.")
             return None
         
-        # Add connection timeout and pool settings
+        # Clean up the URL (Railway sometimes adds extra parameters)
+        if "?sslmode=" not in database_url:
+            database_url += "?sslmode=require"
+        
+        print(f"🔗 Connecting to database: {database_url[:50]}...")
+        
+        # Create engine with Railway-optimized settings
         engine = create_engine(
             database_url,
             connect_args={
-                "connect_timeout": 10,
-                "application_name": "budget_buddy_app"
+                "connect_timeout": 30,
+                "application_name": "budget_buddy_railway",
+                "sslmode": "require"
             },
-            pool_timeout=20,
-            pool_recycle=300,
-            pool_pre_ping=True
+            pool_size=5,
+            max_overflow=10,
+            pool_timeout=30,
+            pool_recycle=3600,
+            pool_pre_ping=True,
+            echo=False  # Set to True for debugging
         )
         
-        # Test the connection with timeout
+        # Test the connection
+        print("🧪 Testing database connection...")
         with engine.connect() as conn:
-            result = conn.execute(text("SELECT 1"))
-            result.fetchone()
+            result = conn.execute(text("SELECT 1 as test"))
+            test_result = result.fetchone()
+            if test_result[0] == 1:
+                print("✅ Database connection successful!")
+            else:
+                raise Exception("Connection test failed")
         
         return engine
+        
     except Exception as e:
-        st.error(f"Database connection error: {str(e)}")
-        st.error("Please check your DATABASE_URL configuration")
-        st.error("Make sure your Railway PostgreSQL database is running")
+        error_msg = str(e)
+        print(f"❌ Database connection error: {error_msg}")
+        
+        # More specific error messages
+        if "could not connect to server" in error_msg:
+            st.error("❌ Cannot connect to database server. Check if your Railway PostgreSQL service is running.")
+        elif "authentication failed" in error_msg:
+            st.error("❌ Database authentication failed. Check your credentials.")
+        elif "database does not exist" in error_msg:
+            st.error("❌ Database does not exist. Check your database name.")
+        elif "timeout" in error_msg:
+            st.error("❌ Connection timeout. The database might be starting up, please wait a moment and refresh.")
+        else:
+            st.error(f"❌ Database connection error: {error_msg}")
+        
+        st.error("🔧 **Railway Deployment Tips:**")
+        st.error("1. Make sure your PostgreSQL service is deployed and running")
+        st.error("2. Verify that the database service is linked to your app")
+        st.error("3. Check that the DATABASE_URL environment variable is set")
+        st.error("4. Wait 1-2 minutes for the database to fully start")
+        
         return None
 
 def initialize_database():
-    """Initialize database tables"""
+    """Initialize database tables with better error handling"""
+    print("🔄 Initializing database...")
     engine = get_database_connection()
     if engine is None:
         return False
     
     try:
         with engine.connect() as conn:
+            # Create transactions table
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS transactions (
                     id SERIAL PRIMARY KEY,
@@ -300,6 +344,7 @@ def initialize_database():
                 )
             """))
             
+            # Create indexes
             conn.execute(text("""
                 CREATE INDEX IF NOT EXISTS idx_transactions_user_id 
                 ON transactions(user_id)
@@ -311,10 +356,71 @@ def initialize_database():
             """))
             
             conn.commit()
+            print("✅ Database initialized successfully!")
         return True
+        
     except Exception as e:
+        print(f"❌ Database initialization error: {str(e)}")
         st.error(f"Database initialization error: {str(e)}")
         return False
+        
+        # Clean up the URL (Railway sometimes adds extra parameters)
+        if "?sslmode=" not in database_url:
+            database_url += "?sslmode=require"
+        
+        print(f"🔗 Connecting to database: {database_url[:50]}...")
+        
+        # Create engine with Railway-optimized settings
+        engine = create_engine(
+            database_url,
+            connect_args={
+                "connect_timeout": 30,
+                "application_name": "budget_buddy_railway",
+                "sslmode": "require"
+            },
+            pool_size=5,
+            max_overflow=10,
+            pool_timeout=30,
+            pool_recycle=3600,
+            pool_pre_ping=True,
+            echo=False  # Set to True for debugging
+        )
+        
+        # Test the connection
+        print("🧪 Testing database connection...")
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1 as test"))
+            test_result = result.fetchone()
+            if test_result[0] == 1:
+                print("✅ Database connection successful!")
+            else:
+                raise Exception("Connection test failed")
+        
+        return engine
+        
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Database connection error: {error_msg}")
+        
+        # More specific error messages
+        if "could not connect to server" in error_msg:
+            st.error("❌ Cannot connect to database server. Check if your Railway PostgreSQL service is running.")
+        elif "authentication failed" in error_msg:
+            st.error("❌ Database authentication failed. Check your credentials.")
+        elif "database does not exist" in error_msg:
+            st.error("❌ Database does not exist. Check your database name.")
+        elif "timeout" in error_msg:
+            st.error("❌ Connection timeout. The database might be starting up, please wait a moment and refresh.")
+        else:
+            st.error(f"❌ Database connection error: {error_msg}")
+        
+        st.error("🔧 **Railway Deployment Tips:**")
+        st.error("1. Make sure your PostgreSQL service is deployed and running")
+        st.error("2. Verify that the database service is linked to your app")
+        st.error("3. Check that the DATABASE_URL environment variable is set")
+        st.error("4. Wait 1-2 minutes for the database to fully start")
+        
+        return None
 
 def initialize_session_state():
     """Initialize session state variables"""
