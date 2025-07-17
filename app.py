@@ -235,7 +235,7 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
+@st.cache_resource
 @st.cache_resource
 def get_database_connection():
     """Create database connection with timeout and better error handling for Railway deployment"""
@@ -248,10 +248,14 @@ def get_database_connection():
             database_url = os.environ["DATABASE_URL"]
             print("✅ Found DATABASE_URL in environment variables")
         
-        # Method 2: Try Streamlit secrets (for Streamlit Cloud)
-        elif hasattr(st, 'secrets') and "DATABASE_URL" in st.secrets:
-            database_url = st.secrets["DATABASE_URL"]
-            print("✅ Found DATABASE_URL in Streamlit secrets")
+        # Method 2: Try Streamlit secrets (for Streamlit Cloud) - with proper error handling
+        elif hasattr(st, 'secrets'):
+            try:
+                if "DATABASE_URL" in st.secrets:
+                    database_url = st.secrets["DATABASE_URL"]
+                    print("✅ Found DATABASE_URL in Streamlit secrets")
+            except Exception as secrets_error:
+                print(f"⚠️ Could not access Streamlit secrets: {secrets_error}")
         
         # Method 3: Try individual components (Railway style)
         elif all(key in os.environ for key in ["PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD"]):
