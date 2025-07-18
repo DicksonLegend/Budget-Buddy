@@ -236,103 +236,57 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 @st.cache_resource
-@st.cache_resource
-@st.cache_resource
 def get_database_connection():
     """Create database connection with timeout and better error handling for Railway deployment"""
     try:
-        # Try different methods to get DATABASE_URL
-        database_url = None
-        
-        # Method 1: Try Railway environment variable (most common)
-        if "DATABASE_URL" in os.environ:
-            database_url = os.environ["DATABASE_URL"]
-            print("✅ Found DATABASE_URL in environment variables")
-        
-        # Method 2: Try Streamlit secrets (for Streamlit Cloud) - with proper error handling
-        elif hasattr(st, 'secrets'):
-            try:
-                if "DATABASE_URL" in st.secrets:
-                    database_url = st.secrets["DATABASE_URL"]
-                    print("✅ Found DATABASE_URL in Streamlit secrets")
-            except Exception as secrets_error:
-                print(f"⚠️ Could not access Streamlit secrets: {secrets_error}")
-        
-        # Method 3: Try individual components (Railway style)
-        elif all(key in os.environ for key in ["PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD"]):
-            database_url = f"postgresql://{os.environ['PGUSER']}:{os.environ['PGPASSWORD']}@{os.environ['PGHOST']}:{os.environ['PGPORT']}/{os.environ['PGDATABASE']}"
-            print("✅ Built DATABASE_URL from individual components")
+        # Get DATABASE_URL from environment
+        database_url = os.environ.get("DATABASE_URL")
         
         if not database_url:
             print("❌ DATABASE_URL not found!")
             return None
         
-        # Clean up the URL (Railway sometimes adds extra parameters)
-        if "?sslmode=" not in database_url:
+        # Clean up the URL and ensure SSL
+        if "?sslmode=" not in database_url and "sslmode=" not in database_url:
             database_url += "?sslmode=require"
         
-        print(f"🔗 Connecting to database: {database_url[:50]}...")
+        print(f"🔗 Connecting to database...")
         
-        # Create engine with Railway-optimized settings
+        # Create engine with optimized settings
         engine = create_engine(
             database_url,
             connect_args={
                 "connect_timeout": 30,
-                "application_name": "budget_buddy_railway",
-                "sslmode": "require"
+                "application_name": "budget_buddy_railway"
             },
-            pool_size=5,
-            max_overflow=10,
+            pool_size=3,
+            max_overflow=5,
             pool_timeout=30,
             pool_recycle=3600,
             pool_pre_ping=True,
-            echo=False  # Set to True for debugging
+            echo=False
         )
         
         # Test the connection
-        print("🧪 Testing database connection...")
         with engine.connect() as conn:
             result = conn.execute(text("SELECT 1 as test"))
             test_result = result.fetchone()
-            if test_result[0] == 1:
+            if test_result and test_result[0] == 1:
                 print("✅ Database connection successful!")
+                return engine
             else:
                 raise Exception("Connection test failed")
         
-        return engine
-        
     except Exception as e:
-        error_msg = str(e)
-        print(f"❌ Database connection error: {error_msg}")
-        
-        # More specific error messages
-        if "could not connect to server" in error_msg:
-            print("❌ Cannot connect to database server. Check if your Railway PostgreSQL service is running.")
-        elif "authentication failed" in error_msg:
-            print("❌ Database authentication failed. Check your credentials.")
-        elif "database does not exist" in error_msg:
-            print("❌ Database does not exist. Check your database name.")
-        elif "timeout" in error_msg:
-            print("❌ Connection timeout. The database might be starting up, please wait a moment and refresh.")
-        else:
-            print(f"❌ Database connection error: {error_msg}")
-        
+        print(f"❌ Database connection error: {str(e)}")
         return None
 
 def initialize_database():
     """Initialize database tables with better error handling"""
     print("🔄 Initializing database...")
     
-    # Add a check to prevent multiple initializations
-    if hasattr(st.session_state, 'db_init_attempted') and st.session_state.db_init_attempted:
-        print("⚠️ Database initialization already attempted")
-        return st.session_state.get('db_initialized', False)
-    
-    st.session_state.db_init_attempted = True
-    
     engine = get_database_connection()
     if engine is None:
-        st.session_state.db_initialized = False
         return False
     
     try:
@@ -363,12 +317,10 @@ def initialize_database():
             
             conn.commit()
             print("✅ Database initialized successfully!")
-            st.session_state.db_initialized = True
         return True
         
     except Exception as e:
         print(f"❌ Database initialization error: {str(e)}")
-        st.session_state.db_initialized = False
         return False
 
 def initialize_session_state():
@@ -376,25 +328,29 @@ def initialize_session_state():
     if 'user_id' not in st.session_state:
         st.session_state.user_id = str(uuid4())
     
-    # Only initialize database once
     if 'db_initialized' not in st.session_state:
         st.session_state.db_initialized = initialize_database()
-    
-    if 'data_loaded' not in st.session_state:
-        st.session_state.data_loaded = True
+        
+def clear_data_cache():
+    """Clear all cached data"""
+    try:
+        # Clear specific cache functions
+        if 'get_transactions' in globals():
+            get_transactions.clear()
+        if 'get_summary' in globals():
+            get_summary.clear()
+        if 'get_category_summary' in globals():
+            get_category_summary.clear()
+        if 'get_daily_summary' in globals():
+            get_daily_summary.clear()
+    except Exception as e:
+        print(f"Warning: Could not clear cache: {str(e)}")
 
 def refresh_data_from_db():
     """Refresh all data from database"""
-    # Clear all cached functions
-    get_transactions.clear()
-    get_summary.clear()
-    get_category_summary.clear()
-    get_daily_summary.clear()
-    
-    # Force refresh session state
-    if 'data_loaded' in st.session_state:
-        del st.session_state['data_loaded']
-    st.session_state.data_loaded = True
+    clear_data_cache()
+    # Force rerun to refresh the UI
+    st.rerun()
 
 def add_transaction(transaction_type, category, amount, description=""):
     """Add a new transaction to database"""
@@ -419,11 +375,6 @@ def add_transaction(transaction_type, category, amount, description=""):
         # Clear cache immediately after adding
         clear_data_cache()
         
-        # Force refresh session state
-        if 'data_loaded' in st.session_state:
-            del st.session_state['data_loaded']
-        st.session_state.data_loaded = True
-        
         return True
     except Exception as e:
         st.error(f"Error adding transaction: {str(e)}")
@@ -439,7 +390,7 @@ def clear_data_cache():
     except Exception as e:
         st.error(f"Error clearing cache: {str(e)}")
 
-@st.cache_data(ttl=5)  # Cache for 30 seconds
+@st.cache_data(ttl=10)  # Cache for 10 seconds
 def get_transactions():
     """Get all transactions from database"""
     engine = get_database_connection()
@@ -471,7 +422,7 @@ def get_transactions():
         st.error(f"Error fetching transactions: {str(e)}")
         return []
 
-@st.cache_data(ttl=5)  # Cache for 30 seconds
+@st.cache_data(ttl=10)  # Cache for 10 seconds
 def get_summary():
     """Get income and expense summary"""
     engine = get_database_connection()
@@ -495,7 +446,7 @@ def get_summary():
         st.error(f"Error getting summary: {str(e)}")
         return 0, 0
 
-@st.cache_data(ttl=5)  # Cache for 30 seconds
+@st.cache_data(ttl=10)  # Cache for 10 seconds
 def get_category_summary():
     """Get summary by category"""
     engine = get_database_connection()
@@ -521,7 +472,7 @@ def get_category_summary():
         st.error(f"Error getting category summary: {str(e)}")
         return []
 
-@st.cache_data(ttl=5)  # Cache for 30 seconds
+@st.cache_data(ttl=10)  # Cache for 10 seconds
 def get_daily_summary():
     """Get daily transaction summary for the last 30 days"""
     engine = get_database_connection()
@@ -563,21 +514,19 @@ def clear_all_data():
     
     try:
         with engine.connect() as conn:
-            result = conn.execute(text("""
+            conn.execute(text("""
                 DELETE FROM transactions WHERE user_id = :user_id
             """), {'user_id': st.session_state.user_id})
             conn.commit()
         
-        # Clear cache and force refresh
+        # Clear cache after clearing data
         clear_data_cache()
-        if 'data_loaded' in st.session_state:
-            del st.session_state['data_loaded']
-        st.session_state.data_loaded = True
         
         return True
     except Exception as e:
         st.error(f"Error clearing data: {str(e)}")
         return False
+
 
 
 def format_currency(amount):
@@ -662,37 +611,29 @@ def get_spending_insights():
 
 def main():
     initialize_session_state()
+    
+    # Check database connection
     if not st.session_state.db_initialized:
         st.error("🚨 Database Connection Failed")
-        st.error("Please check your Railway PostgreSQL service:")
-        st.error("1. Ensure PostgreSQL service is running")
-        st.error("2. Check DATABASE_URL environment variable")
-        st.error("3. Verify service linking in Railway dashboard")
+        st.error("Please check your Railway PostgreSQL service and try refreshing the page.")
         
         # Add a retry button
         if st.button("🔄 Retry Database Connection"):
-            # Clear the initialization flags
-            if 'db_init_attempted' in st.session_state:
-                del st.session_state['db_init_attempted']
+            # Clear the initialization flag and retry
             if 'db_initialized' in st.session_state:
                 del st.session_state['db_initialized']
             st.rerun()
         return
 
-    # Fixed refresh button - replace the existing one
+    # Fixed refresh button
     if st.sidebar.button("🔄 Refresh Data"):
         with st.spinner("Refreshing data..."):
             try:
                 refresh_data_from_db()
                 st.sidebar.success("✅ Data refreshed!")
-                # Use st.rerun() to refresh the page
-                st.rerun()
             except Exception as e:
                 st.sidebar.error(f"Error refreshing: {str(e)}")
     
-    if not st.session_state.db_initialized:
-        st.error("Database connection failed. Please check your DATABASE_URL.")
-        return
     # Header with animation
     st.markdown('<h1 class="main-header">💰 Budget Buddy - Finance Tracker</h1>', unsafe_allow_html=True)
     
@@ -1008,6 +949,14 @@ def delete_transaction(transaction_id):
             if result.rowcount == 0:
                 st.warning("Transaction not found or already deleted.")
                 return False
+        
+        # Clear cache after deletion
+        clear_data_cache()
+        
+        return True
+    except Exception as e:
+        st.error(f"Error deleting transaction: {str(e)}")
+        return False
         
         # Clear cache and force refresh
         clear_data_cache()
