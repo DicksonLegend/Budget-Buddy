@@ -7,7 +7,13 @@ A modern, feature-rich personal finance tracker built with **Streamlit** and **P
 [![PostgreSQL](https://img.shields.io/badge/postgresql-%23316192.svg)](https://www.postgresql.org/)
 [![Railway](https://img.shields.io/badge/railway-deployed-success)](https://railway.app/)
 
-![Budget Buddy Dashboard](https://budget-buddy-production-f944.up.railway.app/)
+---
+
+## 🚀 Live Demo
+
+**Try Budget Buddy live:** [https://budget-buddy-production-f944.up.railway.app/](https://budget-buddy-production-f944.up.railway.app/)
+
+---
 
 ## ✨ Features
 
@@ -38,7 +44,9 @@ A modern, feature-rich personal finance tracker built with **Streamlit** and **P
 
 ## 🚀 Live Demo
 
-Try Budget Buddy live: [Your Railway Deployment URL]
+**Try Budget Buddy live:** [https://budget-buddy-production-f944.up.railway.app/](https://budget-buddy-production-f944.up.railway.app/)
+
+---
 
 ## 🛠️ Tech Stack
 
