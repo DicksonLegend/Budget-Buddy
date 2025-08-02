@@ -11,7 +11,7 @@ A modern, feature-rich personal finance tracker built with **Streamlit** and **P
 
 ## 🚀 Live Demo
 
-**Try Budget Buddy live:** [https://budget-buddy-production-f944.up.railway.app/](Budget Buddy)
+**Try Budget Buddy live:** [https://budget-buddy-production-f944.up.railway.app/](https://budget-buddy-production-f944.up.railway.app/)
 
 ---
 
